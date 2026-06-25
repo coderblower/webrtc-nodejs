@@ -287,7 +287,19 @@
         });
 
         socket.on('ice-candidate', async ({ candidate }) => {
-          await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+          try {
+            if (peerConnection && peerConnection.remoteDescription) {
+              await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            } else {
+              setTimeout(async () => {
+                if (peerConnection) {
+                  await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                }
+              }, 1500);
+            }
+          } catch (err) {
+            console.error('ICE Error:', err);
+          }
         });
 
         socket.on('call-ended', () => {
