@@ -233,15 +233,6 @@
             });
           }
 
-          // If no video track was added, force WebRTC to expect incoming video
-          if (!localStream || localStream.getVideoTracks().length === 0) {
-            peerConnection.addTransceiver('video', { direction: 'recvonly' });
-          }
-          // Same for audio
-          if (!localStream || localStream.getAudioTracks().length === 0) {
-            peerConnection.addTransceiver('audio', { direction: 'recvonly' });
-          }
-
           peerConnection.ontrack = (event) => {
             const stream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
             remoteVideo.srcObject = stream;
@@ -273,6 +264,21 @@
            if (!peerConnection || peerConnection.signalingState === "closed") {
               createPeerConnection();
            }
+
+           // Add transceivers ONLY if we are creating the offer, to avoid m-line conflicts
+           if (!localStream || localStream.getVideoTracks().length === 0) {
+             const senders = peerConnection.getSenders();
+             if (!senders.some(s => s.track && s.track.kind === 'video')) {
+               peerConnection.addTransceiver('video', { direction: 'recvonly' });
+             }
+           }
+           if (!localStream || localStream.getAudioTracks().length === 0) {
+             const senders = peerConnection.getSenders();
+             if (!senders.some(s => s.track && s.track.kind === 'audio')) {
+               peerConnection.addTransceiver('audio', { direction: 'recvonly' });
+             }
+           }
+
            const offer = await peerConnection.createOffer();
            await peerConnection.setLocalDescription(offer);
            socket.emit('offer', { meetingId, offer });
