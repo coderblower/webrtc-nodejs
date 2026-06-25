@@ -232,8 +232,10 @@
           });
 
           peerConnection.ontrack = (event) => {
-            remoteVideo.srcObject = event.streams[0];
-            const hasVideo = event.streams[0].getVideoTracks().length > 0;
+            const stream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
+            remoteVideo.srcObject = stream;
+            
+            const hasVideo = stream.getVideoTracks().length > 0;
             if (hasVideo) {
               document.getElementById('remoteAvatar').style.display = 'none';
             } else {
