@@ -227,9 +227,20 @@
           if (peerConnection) peerConnection.close();
           peerConnection = new RTCPeerConnection(configuration);
 
-          localStream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localStream);
-          });
+          if (localStream) {
+            localStream.getTracks().forEach(track => {
+              peerConnection.addTrack(track, localStream);
+            });
+          }
+
+          // If no video track was added, force WebRTC to expect incoming video
+          if (!localStream || localStream.getVideoTracks().length === 0) {
+            peerConnection.addTransceiver('video', { direction: 'recvonly' });
+          }
+          // Same for audio
+          if (!localStream || localStream.getAudioTracks().length === 0) {
+            peerConnection.addTransceiver('audio', { direction: 'recvonly' });
+          }
 
           peerConnection.ontrack = (event) => {
             const stream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
