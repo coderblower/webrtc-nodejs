@@ -257,7 +257,7 @@
         socket.emit('join-room', { meetingId, role });
 
         // The person who is ALREADY in the room creates the offer when a new person joins
-        socket.on('user-joined', async (data) => {
+        const handleGenerateOffer = async () => {
            document.getElementById('remoteAvatar').style.display = 'flex';
            document.getElementById('remoteAvatar').innerHTML = `<div style="font-size: 80px; margin-bottom: 20px;">⌛</div><h2 id="remoteStatus">Connecting...</h2>`;
            
@@ -282,7 +282,10 @@
            const offer = await peerConnection.createOffer();
            await peerConnection.setLocalDescription(offer);
            socket.emit('offer', { meetingId, offer });
-        });
+        };
+
+        socket.on('user-joined', handleGenerateOffer);
+        socket.on('request-offer', handleGenerateOffer);
 
         socket.on('user-left', () => {
            remoteVideo.srcObject = null;

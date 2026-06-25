@@ -59,6 +59,12 @@ const socketHandler = (io) => {
       });
     });
 
+    socket.on('request-offer', (data) => {
+      socket.to(data.meetingId).emit('request-offer', {
+        sender: socket.role
+      });
+    });
+
     socket.on('leave-room', () => {
       if (socket.meetingId) {
         socket.to(socket.meetingId).emit('user-left', { role: socket.role });
