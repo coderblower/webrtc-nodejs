@@ -257,7 +257,9 @@
            document.getElementById('remoteAvatar').style.display = 'flex';
            document.getElementById('remoteAvatar').innerHTML = `<div style="font-size: 80px; margin-bottom: 20px;">⌛</div><h2 id="remoteStatus">Connecting...</h2>`;
            
-           createPeerConnection();
+           if (!peerConnection || peerConnection.signalingState === "closed") {
+              createPeerConnection();
+           }
            const offer = await peerConnection.createOffer();
            await peerConnection.setLocalDescription(offer);
            socket.emit('offer', { meetingId, offer });
