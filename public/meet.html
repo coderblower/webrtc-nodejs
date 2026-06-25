@@ -108,7 +108,10 @@
             localVideo.style.display = 'none';
             document.getElementById('localAvatar').style.display = 'flex';
           } catch (audioErr) {
-            throw new Error("Microphone access is required to join the consultation.");
+            console.warn("No microphone found either. Joining as observer.");
+            localStream = new MediaStream(); // Empty stream, receive-only
+            localVideo.style.display = 'none';
+            document.getElementById('localAvatar').style.display = 'flex';
           }
         }
         
@@ -165,7 +168,7 @@
         console.error(err);
         overlay.style.display = "flex";
         statusText.innerText = "Access Denied";
-        subText.innerText = "Camera access denied or network error occurred.";
+        subText.innerText = err.message || "Camera/Mic access denied or network error occurred.";
       }
     };
 
