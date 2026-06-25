@@ -81,18 +81,15 @@
 </head>
 <body>
 
-  <div class="container">
-    <h1>Doctor / Patient Portal Demo</h1>
-    <p style="color: #64748b; margin-bottom: 0;">Enter the 6-digit meeting code to load the consultation room inside the iframe below.</p>
+  <div class="container" style="text-align: center;">
+    <h1>Doctor Dashboard</h1>
+    <p style="color: #64748b; margin-bottom: 24px;">Start a new consultation to generate a secure access code for your patient.</p>
     
-    <div class="input-group">
-      <input type="text" id="meetingCode" placeholder="e.g. 123456" maxlength="6">
-      <button onclick="loadIframe()">Load Meeting Room</button>
-    </div>
-    
-    <div style="margin-top: 16px; text-align: center;">
-      <span style="color: #64748b; font-size: 14px;">Or, if you are testing as a doctor:</span>
-      <button onclick="createMeeting()" style="background: #10b981; margin-left: 10px; padding: 8px 16px; font-size: 14px;">Create New Meeting</button>
+    <button onclick="createMeeting()" style="background: #10b981; padding: 16px 32px; font-size: 18px; width: 100%; max-width: 300px;">Host New Consultation</button>
+
+    <div id="codeDisplay" style="display: none; margin-top: 24px; padding: 20px; background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 8px;">
+      <p style="margin: 0; color: #64748b; font-size: 14px;">Share this code with your patient:</p>
+      <h2 id="generatedCode" style="margin: 8px 0 0 0; font-size: 36px; color: #0f172a; letter-spacing: 4px;"></h2>
     </div>
   </div>
 
@@ -113,8 +110,8 @@
         });
         const data = await res.json();
         if (data.success) {
-          document.getElementById('meetingCode').value = data.joinCode;
-          alert(`Meeting Created! Your code is ${data.joinCode}. Clicking OK will load the room.`);
+          document.getElementById('codeDisplay').style.display = 'block';
+          document.getElementById('generatedCode').innerText = data.joinCode;
           loadIframe(data.joinCode, 'doctor');
         } else {
           alert("Failed to create meeting: " + data.error);
@@ -124,11 +121,10 @@
       }
     }
 
-    function loadIframe(autoCode, role = 'patient') {
-      const codeInput = autoCode || document.getElementById('meetingCode').value.trim();
+    function loadIframe(code, role = 'doctor') {
       const container = document.getElementById('iframe-container');
 
-      if (!codeInput) {
+      if (!code) {
         alert("Please enter a meeting code.");
         return;
       }
@@ -136,7 +132,7 @@
       // Dynamically create the iframe with the provided code
       container.innerHTML = `
         <iframe 
-          src="https://meet.shohozprobash.com/meet.html?code=${codeInput}&role=${role}" 
+          src="https://meet.shohozprobash.com/meet.html?code=${code}&role=${role}" 
           allow="camera; microphone; fullscreen; display-capture"
         ></iframe>
       `;
