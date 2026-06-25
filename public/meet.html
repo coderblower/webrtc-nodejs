@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Telemedicine Consultation</title>
+  <style>
+    body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #0f172a; font-family: sans-serif; overflow: hidden; }
+    #remoteVideo { width: 100%; height: 100%; object-fit: cover; }
+    #localVideo { position: absolute; bottom: 20px; right: 20px; width: 120px; height: 160px; object-fit: cover; border-radius: 12px; border: 2px solid rgba(255,255,255,0.5); z-index: 10; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+    #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(15, 23, 42, 0.95); color: white; z-index: 20; text-align: center; padding: 20px; box-sizing: border-box; }
+    .btn { padding: 14px 28px; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; margin-top: 20px; transition: background 0.2s; }
+    .btn:hover { background: #1d4ed8; }
+    #controls { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 20px; z-index: 15; }
+    .control-btn { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); padding: 15px; border-radius: 50%; cursor: pointer; color: white; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); font-size: 20px; transition: all 0.2s; }
+    .control-btn:hover { background: rgba(255,255,255,0.25); transform: scale(1.05); }
+    .end-btn { background: #ef4444; border-color: #ef4444; }
+    .end-btn:hover { background: #dc2626; }
+  </style>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+
+  <video id="remoteVideo" autoplay playsinline></video>
+  <video id="localVideo" autoplay playsinline muted></video>
+
+  <div id="overlay">
+    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 20px;"><path d="M23 7l-7 5 7 5V7z"></path><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+    <h2 id="statusText" style="margin:0; font-size: 24px;">Initializing...</h2>
+    <p id="subText" style="color: #94a3b8; margin-top: 10px;">Please grant camera permissions when prompted.</p>
+    <button id="startBtn" class="btn" style="display:none;">Join Meeting</button>
+  </div>
+
+  <div id="controls" style="display:none;">
+    <button id="muteBtn" class="control-btn" title="Mute/Unmute">🎤</button>
+    <button id="videoBtn" class="control-btn" title="Turn Camera Off/On">📷</button>
+    <button id="endBtn" class="control-btn end-btn" title="Leave Call">📞</button>
+  </div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const joinCode = urlParams.get('code');
+    const role = urlParams.get('role') || 'patient'; 
+
+    const overlay = document.getElementById('overlay');
+    const statusText = document.getElementById('statusText');
+    const subText = document.getElementById('subText');
+    const startBtn = document.getElementById('startBtn');
+    const controls = document.getElementById('controls');
+    
+    const localVideo = document.getElementById('localVideo');
+    const remoteVideo = document.getElementById('remoteVideo');
+
+    let localStream;
+    let peerConnection;
+    let socket;
+    let meetingId;
+    let isMuted = false;
+    let isVideoOff = false;
+
+    const configuration = {
+      iceServers: [
+        { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
+        { urls: 'turn:pdf.mges.global:3478', username: 'videocall', credential: '12345678&12345678' }
+      ]
+    };
+
+    if (!joinCode) {
+      statusText.innerText = "Meeting Code Required";
+      subText.innerText = "Please provide a ?code= parameter in the URL.";
+    } else {
+      statusText.innerText = `Ready to join meeting`;
+      subText.innerText = `Room Code: ${joinCode}`;
+      startBtn.style.display = "block";
+    }
+
+    startBtn.onclick = async () => {
+      startBtn.style.display = "none";
+      statusText.innerText = "Connecting securely...";
+      subText.innerText = "Authenticating with server";
+      
+      try {
+        const res = await fetch(`/api/meetings/join`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ joinCode })
+        });
+        const data = await res.json();
+        
+        if (!data.success) {
+          statusText.innerText = "Connection Failed";
+          subText.innerText = data.error || "Invalid code or meeting ended.";
+          return;
+        }
+        
+        meetingId = data.meetingId;
+        statusText.innerText = "Requesting Camera...";
+        subText.innerText = "Click 'Allow' in your browser.";
+
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        localVideo.srcObject = localStream;
+        
+        overlay.style.display = "none";
+        controls.style.display = "flex";
+
+        socket = io('/');
+        peerConnection = new RTCPeerConnection(configuration);
+
+        localStream.getTracks().forEach(track => {
+          peerConnection.addTrack(track, localStream);
+        });
+
+        peerConnection.ontrack = (event) => {
+          remoteVideo.srcObject = event.streams[0];
+        };
+
+        peerConnection.onicecandidate = (event) => {
+          if (event.candidate) {
+            socket.emit('ice-candidate', { meetingId, candidate: event.candidate });
+          }
+        };
+
+        socket.emit('join-room', { meetingId, role });
+
+        socket.on('user-joined', async (data) => {
+           if (role === 'doctor') {
+             const offer = await peerConnection.createOffer();
+             await peerConnection.setLocalDescription(offer);
+             socket.emit('offer', { meetingId, offer });
+           }
+        });
+
+        socket.on('offer', async ({ offer }) => {
+          await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+          const answer = await peerConnection.createAnswer();
+          await peerConnection.setLocalDescription(answer);
+          socket.emit('answer', { meetingId, answer });
+        });
+
+        socket.on('answer', async ({ answer }) => {
+          await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        });
+
+        socket.on('ice-candidate', async ({ candidate }) => {
+          await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        });
+
+        socket.on('call-ended', () => {
+          endCall("Call ended by the host.");
+        });
+
+      } catch (err) {
+        console.error(err);
+        overlay.style.display = "flex";
+        statusText.innerText = "Access Denied";
+        subText.innerText = "Camera access denied or network error occurred.";
+      }
+    };
+
+    document.getElementById('muteBtn').onclick = () => {
+      isMuted = !isMuted;
+      localStream.getAudioTracks().forEach(t => t.enabled = !isMuted);
+      document.getElementById('muteBtn').innerText = isMuted ? "🔇" : "🎤";
+      document.getElementById('muteBtn').style.background = isMuted ? "rgba(239, 68, 68, 0.5)" : "rgba(255,255,255,0.1)";
+    };
+
+    document.getElementById('videoBtn').onclick = () => {
+      isVideoOff = !isVideoOff;
+      localStream.getVideoTracks().forEach(t => t.enabled = !isVideoOff);
+      document.getElementById('videoBtn').innerText = isVideoOff ? "🚫" : "📷";
+      document.getElementById('videoBtn').style.background = isVideoOff ? "rgba(239, 68, 68, 0.5)" : "rgba(255,255,255,0.1)";
+    };
+
+    document.getElementById('endBtn').onclick = () => {
+      endCall("You have left the consultation.");
+    };
+
+    function endCall(msg) {
+      if (socket) {
+        socket.emit('leave-room');
+        socket.disconnect();
+      }
+      if (peerConnection) peerConnection.close();
+      if (localStream) localStream.getTracks().forEach(t => t.stop());
+      
+      controls.style.display = "none";
+      overlay.style.display = "flex";
+      statusText.innerText = "Meeting Ended";
+      subText.innerText = msg;
+      startBtn.style.display = "none";
+      remoteVideo.srcObject = null;
+      localVideo.srcObject = null;
+    }
+  </script>
+</body>
+</html>
