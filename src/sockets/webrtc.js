@@ -1,44 +1,52 @@
-const { meetings } = require('../utils/store');
+const { get, run } = require('../utils/db');
 
 const socketHandler = (io) => {
   // Authentication middleware for sockets
   io.use((socket, next) => {
-    // In production, validate JWT here
-    // const token = socket.handshake.auth.token;
-    // ... validation logic ...
     next();
   });
 
   io.on('connection', (socket) => {
     console.log(`User connected: ${socket.id}`);
 
-    socket.on('join-room', ({ meetingId, role }) => {
-      const meeting = meetings.get(meetingId);
-      
-      if (!meeting) {
-        return socket.emit('error', { message: 'Meeting not found' });
-      }
+    socket.on('join-room', async ({ meetingId, role }) => {
+      try {
+        const meeting = await get('SELECT * FROM meetings WHERE id = ? OR joinCode = ?', [meetingId, meetingId]);
+        
+        if (!meeting) {
+          return socket.emit('error', { message: 'Meeting not found' });
+        }
 
-      socket.join(meetingId);
-      socket.meetingId = meetingId;
-      socket.role = role; // 'doctor' or 'patient'
+        const now = new Date();
+        if (meeting.startDate && now < new Date(meeting.startDate)) {
+          return socket.emit('error', { message: 'Schedule yet to come' });
+        }
+        if (meeting.expireDate && now > new Date(meeting.expireDate)) {
+          return socket.emit('error', { message: 'Schedule has expired' });
+        }
 
-      console.log(`${role} joined room: ${meetingId}`);
+        socket.join(meeting.id); // ALWAYS use the DB ID for the room, even if they joined via custom code
+        socket.meetingId = meeting.id;
+        socket.role = role; // 'doctor' or 'patient'
 
-      // Notify others in the room
-      socket.to(meetingId).emit('user-joined', { role, socketId: socket.id });
+        console.log(`${role} joined room: ${meeting.id}`);
 
-      // If both are in, we can update status
-      const roomSize = io.sockets.adapter.rooms.get(meetingId)?.size;
-      if (roomSize === 2) {
-        meeting.status = 'active';
-        io.to(meetingId).emit('meeting-active');
+        // Notify others in the room
+        socket.to(meeting.id).emit('user-joined', { role, socketId: socket.id });
+
+        // If both are in, we can update status
+        const roomSize = io.sockets.adapter.rooms.get(meeting.id)?.size;
+        if (roomSize === 2) {
+          await run('UPDATE meetings SET status = ? WHERE id = ?', ['active', meeting.id]);
+          io.to(meeting.id).emit('meeting-active');
+        }
+      } catch (err) {
+        console.error("Error joining room", err);
       }
     });
 
     // WebRTC Signaling Events
     socket.on('offer', (data) => {
-      // Send offer to the other peer in the room
       socket.to(data.meetingId).emit('offer', {
         offer: data.offer,
         sender: socket.role
@@ -73,14 +81,15 @@ const socketHandler = (io) => {
       }
     });
 
-    socket.on('end-call', () => {
+    socket.on('end-call', async () => {
       if (socket.meetingId) {
-        const meeting = meetings.get(socket.meetingId);
-        if (meeting) {
-          meeting.status = 'ended';
+        try {
+          await run('UPDATE meetings SET status = ? WHERE id = ?', ['ended', socket.meetingId]);
+          io.to(socket.meetingId).emit('call-ended');
+          io.socketsLeave(socket.meetingId);
+        } catch (err) {
+          console.error(err);
         }
-        io.to(socket.meetingId).emit('call-ended');
-        io.socketsLeave(socket.meetingId);
       }
     });
 

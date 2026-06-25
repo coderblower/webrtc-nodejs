@@ -1,69 +1,94 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
-const { meetings } = require('../utils/store');
+const { run, get } = require('../utils/db');
 const authMiddleware = require('../middleware/auth');
 
 const router = express.Router();
 
-// Doctor creates a meeting
-router.post('/create', authMiddleware, (req, res) => {
-  // In production, you would uncomment this check:
-  // if (req.user.role !== 'doctor') return res.status(403).json({ error: 'Only doctors can create meetings' });
-
+// Doctor creates a scheduled meeting
+router.post('/create', authMiddleware, async (req, res) => {
+  const { doctorId, startDate, expireDate, customCode } = req.body;
   const meetingId = uuidv4();
-  const joinCode = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit code for easy mobile entry
-  
-  meetings.set(meetingId, {
-    id: meetingId,
-    joinCode,
-    doctorId: req.user.id,
-    patientId: null,
-    createdAt: new Date(),
-    status: 'waiting' // 'waiting', 'active', 'ended'
-  });
+  const joinCode = customCode || Math.floor(100000 + Math.random() * 900000).toString();
+  const actualDoctorId = doctorId || (req.user ? req.user.id : null);
+  const createdAt = new Date().toISOString();
+  const sDate = startDate ? new Date(startDate).toISOString() : new Date().toISOString();
+  const eDate = expireDate ? new Date(expireDate).toISOString() : null;
+  const status = 'waiting';
 
-  res.json({
-    success: true,
-    meetingId,
-    joinCode
-  });
+  try {
+    await run(`INSERT INTO meetings (id, joinCode, doctorId, patientId, createdAt, startDate, expireDate, status) 
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, 
+               [meetingId, joinCode, actualDoctorId, null, createdAt, sDate, eDate, status]);
+    
+    res.json({
+      success: true,
+      meetingId,
+      joinCode,
+      startDate: sDate,
+      expireDate: eDate
+    });
+  } catch (err) {
+    console.error("Failed to create meeting in DB:", err);
+    res.status(500).json({ error: 'Failed to create meeting' });
+  }
 });
 
 // Validate meeting exists before joining
-router.get('/:idOrCode', (req, res) => {
+router.get('/:idOrCode', async (req, res) => {
   const { idOrCode } = req.params;
-  // Search by ID or 6-digit join code
-  let meeting = meetings.get(idOrCode);
   
-  if (!meeting) {
-    meeting = Array.from(meetings.values()).find(m => m.joinCode === idOrCode);
+  try {
+    const meeting = await get('SELECT * FROM meetings WHERE id = ? OR joinCode = ?', [idOrCode, idOrCode]);
+    
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+    if (meeting.status === 'ended') return res.status(400).json({ error: 'Meeting has ended' });
+
+    const now = new Date();
+    if (meeting.startDate && now < new Date(meeting.startDate)) {
+      return res.status(400).json({ error: 'Schedule yet to come' });
+    }
+    if (meeting.expireDate && now > new Date(meeting.expireDate)) {
+      return res.status(400).json({ error: 'Schedule has expired' });
+    }
+
+    res.json({
+      success: true,
+      meetingId: meeting.id,
+      status: meeting.status
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
   }
-
-  if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
-  if (meeting.status === 'ended') return res.status(400).json({ error: 'Meeting has ended' });
-
-  res.json({
-    success: true,
-    meetingId: meeting.id,
-    status: meeting.status
-  });
 });
 
 // Patient joins (REST part, real join is via Socket)
-router.post('/join', (req, res) => {
+router.post('/join', async (req, res) => {
   const { joinCode } = req.body;
   
-  const meeting = Array.from(meetings.values()).find(m => m.joinCode === joinCode);
-  
-  if (!meeting) return res.status(404).json({ error: 'Invalid meeting code' });
-  if (meeting.status === 'ended') return res.status(400).json({ error: 'Meeting has ended' });
-  
-  // Usually, we'd record the patient's ID here, but WebRTC signaling handles the actual connection.
-  // This is just to validate and get the full meeting ID before socket connection.
-  res.json({
-    success: true,
-    meetingId: meeting.id
-  });
+  try {
+    const meeting = await get('SELECT * FROM meetings WHERE joinCode = ?', [joinCode]);
+    
+    if (!meeting) return res.status(404).json({ error: 'Invalid meeting code' });
+    if (meeting.status === 'ended') return res.status(400).json({ error: 'Meeting has ended' });
+
+    const now = new Date();
+    if (meeting.startDate && now < new Date(meeting.startDate)) {
+      return res.status(400).json({ error: 'Schedule yet to come' });
+    }
+    if (meeting.expireDate && now > new Date(meeting.expireDate)) {
+      return res.status(400).json({ error: 'Schedule has expired' });
+    }
+    
+    res.json({
+      success: true,
+      meetingId: meeting.id
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 module.exports = router;
