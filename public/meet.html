@@ -162,6 +162,7 @@
     let meetingId;
     let isMuted = false;
     let isVideoOff = false;
+    let pendingCandidates = [];
 
     const configuration = {
       iceServers: [
@@ -272,6 +273,15 @@
            }
         });
 
+        function flushPendingCandidates() {
+          for (const c of pendingCandidates) {
+            if (peerConnection) {
+              peerConnection.addIceCandidate(c).catch(e => console.warn("ICE error", e));
+            }
+          }
+          pendingCandidates = [];
+        }
+
         socket.on('offer', async ({ offer }) => {
           if (!peerConnection || peerConnection.signalingState === "closed") {
              createPeerConnection();
@@ -280,22 +290,21 @@
           const answer = await peerConnection.createAnswer();
           await peerConnection.setLocalDescription(answer);
           socket.emit('answer', { meetingId, answer });
+          flushPendingCandidates();
         });
 
         socket.on('answer', async ({ answer }) => {
           await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+          flushPendingCandidates();
         });
 
         socket.on('ice-candidate', async ({ candidate }) => {
           try {
+            const iceCandidate = new RTCIceCandidate(candidate);
             if (peerConnection && peerConnection.remoteDescription) {
-              await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+              await peerConnection.addIceCandidate(iceCandidate);
             } else {
-              setTimeout(async () => {
-                if (peerConnection) {
-                  await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-                }
-              }, 1500);
+              pendingCandidates.push(iceCandidate);
             }
           } catch (err) {
             console.error('ICE Error:', err);
