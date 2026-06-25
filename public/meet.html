@@ -118,10 +118,12 @@
 <body>
 
   <video id="remoteVideo" autoplay playsinline></video>
+  <div id="remoteAvatar" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0f172a; color: #94a3b8; z-index: 5;">
+    <div style="font-size: 80px; margin-bottom: 20px;">⌛</div>
+    <h2 id="remoteStatus">Waiting for other participant to join...</h2>
+  </div>
   <video id="localVideo" autoplay playsinline muted></video>
-  <div id="localAvatar"
-    style="display:none; position: absolute; bottom: 20px; right: 20px; width: 120px; height: 160px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.5); z-index: 10; background: #1e293b; color: white; align-items: center; justify-content: center; font-size: 48px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
-    👨‍⚕️</div>
+  <div id="localAvatar" style="display:none; position: absolute; bottom: 20px; right: 20px; width: 120px; height: 160px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.5); z-index: 10; background: #1e293b; color: white; align-items: center; justify-content: center; font-size: 48px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">👤</div>
 
   <div id="overlay">
     <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round"
@@ -209,6 +211,7 @@
             localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
             localVideo.style.display = 'none';
             document.getElementById('localAvatar').style.display = 'flex';
+            document.getElementById('localAvatar').innerText = role === 'doctor' ? '👨‍⚕️' : '🤒';
           } catch (audioErr) {
             throw new Error("Microphone/Camera access denied. Please click the 🔒 icon in your address bar, allow permissions, and refresh.");
           }
@@ -226,6 +229,15 @@
 
         peerConnection.ontrack = (event) => {
           remoteVideo.srcObject = event.streams[0];
+          
+          // Check if the stream has video
+          const hasVideo = event.streams[0].getVideoTracks().length > 0;
+          if (hasVideo) {
+            document.getElementById('remoteAvatar').style.display = 'none';
+          } else {
+            document.getElementById('remoteAvatar').style.display = 'flex';
+            document.getElementById('remoteAvatar').innerHTML = `<div style="font-size: 80px; margin-bottom: 20px;">${role === 'doctor' ? '🤒' : '👨‍⚕️'}</div><h2 id="remoteStatus">Audio Only Mode</h2>`;
+          }
         };
 
         peerConnection.onicecandidate = (event) => {
@@ -236,12 +248,12 @@
 
         socket.emit('join-room', { meetingId, role });
 
+        // The person who is ALREADY in the room creates the offer when a new person joins
         socket.on('user-joined', async (data) => {
-          if (role === 'doctor') {
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-            socket.emit('offer', { meetingId, offer });
-          }
+           document.getElementById('remoteStatus').innerText = "Connecting...";
+           const offer = await peerConnection.createOffer();
+           await peerConnection.setLocalDescription(offer);
+           socket.emit('offer', { meetingId, offer });
         });
 
         socket.on('offer', async ({ offer }) => {
