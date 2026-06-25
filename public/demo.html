@@ -89,6 +89,11 @@
       <input type="text" id="meetingCode" placeholder="e.g. 123456" maxlength="6">
       <button onclick="loadIframe()">Load Meeting Room</button>
     </div>
+    
+    <div style="margin-top: 16px; text-align: center;">
+      <span style="color: #64748b; font-size: 14px;">Or, if you are testing as a doctor:</span>
+      <button onclick="createMeeting()" style="background: #10b981; margin-left: 10px; padding: 8px 16px; font-size: 14px;">Create New Meeting</button>
+    </div>
   </div>
 
   <div id="iframe-container">
@@ -96,8 +101,31 @@
   </div>
 
   <script>
-    function loadIframe() {
-      const codeInput = document.getElementById('meetingCode').value.trim();
+    async function createMeeting() {
+      try {
+        const res = await fetch('/api/meetings/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            // Passing a dummy token since auth bypass is enabled for dev
+            'Authorization': 'Bearer dummy-token'
+          }
+        });
+        const data = await res.json();
+        if (data.success) {
+          document.getElementById('meetingCode').value = data.joinCode;
+          alert(`Meeting Created! Your code is ${data.joinCode}. Clicking OK will load the room.`);
+          loadIframe(data.joinCode, 'doctor');
+        } else {
+          alert("Failed to create meeting: " + data.error);
+        }
+      } catch (err) {
+        alert("Error creating meeting. Make sure the backend is running.");
+      }
+    }
+
+    function loadIframe(autoCode, role = 'patient') {
+      const codeInput = autoCode || document.getElementById('meetingCode').value.trim();
       const container = document.getElementById('iframe-container');
 
       if (!codeInput) {
@@ -108,7 +136,7 @@
       // Dynamically create the iframe with the provided code
       container.innerHTML = `
         <iframe 
-          src="https://meet.shohozprobash.com/meet.html?code=${codeInput}" 
+          src="https://meet.shohozprobash.com/meet.html?code=${codeInput}&role=${role}" 
           allow="camera; microphone; fullscreen; display-capture"
         ></iframe>
       `;
