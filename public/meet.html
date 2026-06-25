@@ -221,42 +221,61 @@
         controls.style.display = "flex";
 
         socket = io('/');
-        peerConnection = new RTCPeerConnection(configuration);
+        
+        function createPeerConnection() {
+          if (peerConnection) peerConnection.close();
+          peerConnection = new RTCPeerConnection(configuration);
 
-        localStream.getTracks().forEach(track => {
-          peerConnection.addTrack(track, localStream);
-        });
+          localStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, localStream);
+          });
 
-        peerConnection.ontrack = (event) => {
-          remoteVideo.srcObject = event.streams[0];
-          
-          // Check if the stream has video
-          const hasVideo = event.streams[0].getVideoTracks().length > 0;
-          if (hasVideo) {
-            document.getElementById('remoteAvatar').style.display = 'none';
-          } else {
-            document.getElementById('remoteAvatar').style.display = 'flex';
-            document.getElementById('remoteAvatar').innerHTML = `<div style="font-size: 80px; margin-bottom: 20px;">${role === 'doctor' ? '🤒' : '👨‍⚕️'}</div><h2 id="remoteStatus">Audio Only Mode</h2>`;
-          }
-        };
+          peerConnection.ontrack = (event) => {
+            remoteVideo.srcObject = event.streams[0];
+            const hasVideo = event.streams[0].getVideoTracks().length > 0;
+            if (hasVideo) {
+              document.getElementById('remoteAvatar').style.display = 'none';
+            } else {
+              document.getElementById('remoteAvatar').style.display = 'flex';
+              document.getElementById('remoteAvatar').innerHTML = `<div style="font-size: 80px; margin-bottom: 20px;">${role === 'doctor' ? '🤒' : '👨‍⚕️'}</div><h2 id="remoteStatus">Audio Only Mode</h2>`;
+            }
+          };
 
-        peerConnection.onicecandidate = (event) => {
-          if (event.candidate) {
-            socket.emit('ice-candidate', { meetingId, candidate: event.candidate });
-          }
-        };
+          peerConnection.onicecandidate = (event) => {
+            if (event.candidate) {
+              socket.emit('ice-candidate', { meetingId, candidate: event.candidate });
+            }
+          };
+        }
 
+        createPeerConnection();
         socket.emit('join-room', { meetingId, role });
 
         // The person who is ALREADY in the room creates the offer when a new person joins
         socket.on('user-joined', async (data) => {
-           document.getElementById('remoteStatus').innerText = "Connecting...";
+           document.getElementById('remoteAvatar').style.display = 'flex';
+           document.getElementById('remoteAvatar').innerHTML = `<div style="font-size: 80px; margin-bottom: 20px;">⌛</div><h2 id="remoteStatus">Connecting...</h2>`;
+           
+           createPeerConnection();
            const offer = await peerConnection.createOffer();
            await peerConnection.setLocalDescription(offer);
            socket.emit('offer', { meetingId, offer });
         });
 
+        socket.on('user-left', () => {
+           remoteVideo.srcObject = null;
+           document.getElementById('remoteAvatar').style.display = 'flex';
+           document.getElementById('remoteAvatar').innerHTML = `<div style="font-size: 80px; margin-bottom: 20px;">⌛</div><h2 id="remoteStatus">Participant left. Waiting for them to rejoin...</h2>`;
+           if (peerConnection) {
+             peerConnection.close();
+             peerConnection = null;
+           }
+        });
+
         socket.on('offer', async ({ offer }) => {
+          if (!peerConnection || peerConnection.signalingState === "closed") {
+             createPeerConnection();
+          }
           await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
           const answer = await peerConnection.createAnswer();
           await peerConnection.setLocalDescription(answer);
