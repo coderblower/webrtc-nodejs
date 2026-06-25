@@ -1,32 +1,134 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Telemedicine Consultation</title>
   <style>
-    body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #0f172a; font-family: sans-serif; overflow: hidden; }
-    #remoteVideo { width: 100%; height: 100%; object-fit: cover; }
-    #localVideo { position: absolute; bottom: 20px; right: 20px; width: 120px; height: 160px; object-fit: cover; border-radius: 12px; border: 2px solid rgba(255,255,255,0.5); z-index: 10; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
-    #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(15, 23, 42, 0.95); color: white; z-index: 20; text-align: center; padding: 20px; box-sizing: border-box; }
-    .btn { padding: 14px 28px; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; margin-top: 20px; transition: background 0.2s; }
-    .btn:hover { background: #1d4ed8; }
-    #controls { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 20px; z-index: 15; }
-    .control-btn { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); padding: 15px; border-radius: 50%; cursor: pointer; color: white; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); font-size: 20px; transition: all 0.2s; }
-    .control-btn:hover { background: rgba(255,255,255,0.25); transform: scale(1.05); }
-    .end-btn { background: #ef4444; border-color: #ef4444; }
-    .end-btn:hover { background: #dc2626; }
+    body,
+    html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #0f172a;
+      font-family: sans-serif;
+      overflow: hidden;
+    }
+
+    #remoteVideo {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    #localVideo {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      width: 120px;
+      height: 160px;
+      object-fit: cover;
+      border-radius: 12px;
+      border: 2px solid rgba(255, 255, 255, 0.5);
+      z-index: 10;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    }
+
+    #overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(15, 23, 42, 0.95);
+      color: white;
+      z-index: 20;
+      text-align: center;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+
+    .btn {
+      padding: 14px 28px;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: bold;
+      margin-top: 20px;
+      transition: background 0.2s;
+    }
+
+    .btn:hover {
+      background: #1d4ed8;
+    }
+
+    #controls {
+      position: absolute;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 20px;
+      z-index: 15;
+    }
+
+    .control-btn {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 15px;
+      border-radius: 50%;
+      cursor: pointer;
+      color: white;
+      width: 56px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(10px);
+      font-size: 20px;
+      transition: all 0.2s;
+    }
+
+    .control-btn:hover {
+      background: rgba(255, 255, 255, 0.25);
+      transform: scale(1.05);
+    }
+
+    .end-btn {
+      background: #ef4444;
+      border-color: #ef4444;
+    }
+
+    .end-btn:hover {
+      background: #dc2626;
+    }
   </style>
   <script src="/socket.io/socket.io.js"></script>
 </head>
+
 <body>
 
   <video id="remoteVideo" autoplay playsinline></video>
   <video id="localVideo" autoplay playsinline muted></video>
-  <div id="localAvatar" style="display:none; position: absolute; bottom: 20px; right: 20px; width: 120px; height: 160px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.5); z-index: 10; background: #1e293b; color: white; align-items: center; justify-content: center; font-size: 48px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">👨‍⚕️</div>
+  <div id="localAvatar"
+    style="display:none; position: absolute; bottom: 20px; right: 20px; width: 120px; height: 160px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.5); z-index: 10; background: #1e293b; color: white; align-items: center; justify-content: center; font-size: 48px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+    👨‍⚕️</div>
 
   <div id="overlay">
-    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 20px;"><path d="M23 7l-7 5 7 5V7z"></path><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round"
+      stroke-linejoin="round" style="margin-bottom: 20px;">
+      <path d="M23 7l-7 5 7 5V7z"></path>
+      <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+    </svg>
     <h2 id="statusText" style="margin:0; font-size: 24px;">Initializing...</h2>
     <p id="subText" style="color: #94a3b8; margin-top: 10px;">Please grant camera permissions when prompted.</p>
     <button id="startBtn" class="btn" style="display:none;">Join Meeting</button>
@@ -41,14 +143,14 @@
   <script>
     const urlParams = new URLSearchParams(window.location.search);
     const joinCode = urlParams.get('code');
-    const role = urlParams.get('role') || 'patient'; 
+    const role = urlParams.get('role') || 'patient';
 
     const overlay = document.getElementById('overlay');
     const statusText = document.getElementById('statusText');
     const subText = document.getElementById('subText');
     const startBtn = document.getElementById('startBtn');
     const controls = document.getElementById('controls');
-    
+
     const localVideo = document.getElementById('localVideo');
     const remoteVideo = document.getElementById('remoteVideo');
 
@@ -79,7 +181,7 @@
       startBtn.style.display = "none";
       statusText.innerText = "Connecting securely...";
       subText.innerText = "Authenticating with server";
-      
+
       try {
         const res = await fetch(`/api/meetings/join`, {
           method: 'POST',
@@ -87,13 +189,13 @@
           body: JSON.stringify({ joinCode })
         });
         const data = await res.json();
-        
+
         if (!data.success) {
           statusText.innerText = "Connection Failed";
           subText.innerText = data.error || "Invalid code or meeting ended.";
           return;
         }
-        
+
         meetingId = data.meetingId;
         statusText.innerText = "Requesting Camera...";
         subText.innerText = "Click 'Allow' in your browser.";
@@ -108,13 +210,10 @@
             localVideo.style.display = 'none';
             document.getElementById('localAvatar').style.display = 'flex';
           } catch (audioErr) {
-            console.warn("No microphone found either. Joining as observer.");
-            localStream = new MediaStream(); // Empty stream, receive-only
-            localVideo.style.display = 'none';
-            document.getElementById('localAvatar').style.display = 'flex';
+            throw new Error("Microphone/Camera access denied. Please click the 🔒 icon in your address bar, allow permissions, and refresh.");
           }
         }
-        
+
         overlay.style.display = "none";
         controls.style.display = "flex";
 
@@ -138,11 +237,11 @@
         socket.emit('join-room', { meetingId, role });
 
         socket.on('user-joined', async (data) => {
-           if (role === 'doctor') {
-             const offer = await peerConnection.createOffer();
-             await peerConnection.setLocalDescription(offer);
-             socket.emit('offer', { meetingId, offer });
-           }
+          if (role === 'doctor') {
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            socket.emit('offer', { meetingId, offer });
+          }
         });
 
         socket.on('offer', async ({ offer }) => {
@@ -197,7 +296,7 @@
       }
       if (peerConnection) peerConnection.close();
       if (localStream) localStream.getTracks().forEach(t => t.stop());
-      
+
       controls.style.display = "none";
       overlay.style.display = "flex";
       statusText.innerText = "Meeting Ended";
@@ -208,4 +307,5 @@
     }
   </script>
 </body>
+
 </html>
